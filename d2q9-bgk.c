@@ -56,6 +56,8 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
+#include "mpi.h";
+
 #define NSPEEDS         9
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
@@ -136,6 +138,14 @@ int main(int argc, char* argv[])
   double usrtim;                /* floating point number to record elapsed user CPU time */
   double systim;                /* floating point number to record elapsed system CPU time */
 
+  int worldSize;
+  int rank;
+
+  MPI_Init(NULL, NULL);
+
+  MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
   /* parse the command line */
   if (argc != 3)
   {
@@ -147,8 +157,10 @@ int main(int argc, char* argv[])
     obstaclefile = argv[2];
   }
 
+  // TODO: send data to workers 
   /* initialise our data structures and load values from file */
   initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels);
+  // TODO: init space on workers
 
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
@@ -156,7 +168,9 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
+    // TODO: send some o dat halo
     timestep(params, cells, tmp_cells, obstacles);
+    // TODO: reduce avg vels
     av_vels[tt] = av_velocity(params, cells, obstacles);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
@@ -181,6 +195,8 @@ int main(int argc, char* argv[])
   printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
   write_values(params, cells, obstacles, av_vels);
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels);
+
+  MPI_Finalize();
 
   return EXIT_SUCCESS;
 }
