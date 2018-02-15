@@ -4,7 +4,7 @@
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --time 00:15:00
-#SBATCH --partition teaching
+#SBATCH --partition cpu
 #SBATCH --output d2q9-bgk.out
 
 echo Running on host `hostname`
