@@ -2,8 +2,8 @@
 
 #SBATCH --job-name d2q9-bgk
 #SBATCH --nodes 1
-#SBATCH --ntasks-per-node 1
-#SBATCH --time 00:10:00
+#SBATCH --ntasks-per-node 2
+#SBATCH --time 00:02:00
 #SBATCH --partition cpu
 #SBATCH --output d2q9-bgk.out
 
