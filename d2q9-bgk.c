@@ -183,7 +183,6 @@ int main(int argc, char* argv[])
   int*     sub_obstacles = malloc(sizeof(int) * cols_per_proc * rows_per_proc);
 
   MPI_Scatter(cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, sub_cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  // MPI_Scatter(tmp_cells, 9 * cols_per_proc * rows_per_proc, MPI_FLOAT, sub_tmp_cells, 9 * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Scatter(obstacles, cols_per_proc * rows_per_proc, MPI_INT, sub_obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
 
   if (rank == 0) {
@@ -221,7 +220,6 @@ int main(int argc, char* argv[])
   }
 
   MPI_Gather(sub_cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  // MPI_Gather(sub_tmp_cells, 9 * cols_per_proc * rows_per_proc, MPI_FLOAT, tmp_cells, 9 * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Gather(sub_obstacles, cols_per_proc * rows_per_proc, MPI_INT, obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
 
   MPI_Finalize();
