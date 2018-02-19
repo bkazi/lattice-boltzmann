@@ -62,7 +62,6 @@
 #define NSPEEDS         9
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
-#define DEBUG
 
 /* struct to hold the parameter values */
 typedef struct
@@ -96,7 +95,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** timestep calls, in order, the functions:
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
-int timestep(const t_param params, const t_param sub_params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank);
+int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank);
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles, int worldSize, int rank);
 int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells);
 int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
@@ -148,6 +147,12 @@ int main(int argc, char* argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  int ndims = 1;
+  int dims[] = {worldSize};
+  int periods[] = {1};
+  MPI_Comm cart_world;
+  MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, 0, &cart_world);
+
   /* parse the command line */
   if (argc != 3)
   {
@@ -178,28 +183,58 @@ int main(int argc, char* argv[])
   MPI_Bcast(&(params.accel), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&(params.omega), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  t_speed* sub_cells     = malloc(sizeof(t_speed) * cols_per_proc * rows_per_proc);
-  t_speed* sub_tmp_cells = malloc(sizeof(t_speed) * cols_per_proc * rows_per_proc);
-  int*     sub_obstacles = malloc(sizeof(int) * cols_per_proc * rows_per_proc);
+  t_speed* sub_cells     = malloc(sizeof(t_speed) * cols_per_proc * (rows_per_proc + 2));
+  t_speed* sub_tmp_cells = malloc(sizeof(t_speed) * cols_per_proc * (rows_per_proc + 2));
+  int*     sub_obstacles = malloc(sizeof(int) * cols_per_proc * (rows_per_proc + 2));
 
-  MPI_Scatter(cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, sub_cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Scatter(obstacles, cols_per_proc * rows_per_proc, MPI_INT, sub_obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
-
-  if (rank == 0) {
-    gettimeofday(&timstr, NULL);
-    tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
-  }
-  /* iterate for maxIters timesteps */
+  MPI_Scatter(cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, (sub_cells + cols_per_proc), NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Scatter(obstacles, cols_per_proc * rows_per_proc, MPI_INT, (sub_obstacles + cols_per_proc), cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
 
   t_param sub_params;
   memcpy(&sub_params, &params, sizeof(t_param));
   sub_params.ny = rows_per_proc;
   sub_params.nx = cols_per_proc;
 
+  int* sendbufi = malloc(sizeof(int) * 2 * cols_per_proc);
+  int* recvbufi = malloc(sizeof(int) * 2 * cols_per_proc);
+
+  for (int i = 0; i < cols_per_proc; i++) {
+    sendbufi[i] = sub_obstacles[i + cols_per_proc];
+    sendbufi[i + cols_per_proc] = sub_obstacles[i + (rows_per_proc * cols_per_proc)];
+  }
+
+  MPI_Neighbor_alltoall(sendbufi, cols_per_proc, MPI_INT, recvbufi, cols_per_proc, MPI_INT, cart_world);
+
+  for (int i = 0; i < cols_per_proc; i++) {
+    sub_obstacles[i] = recvbufi[i];
+    sub_obstacles[i + ((rows_per_proc + 1) * cols_per_proc)] = recvbufi[i + cols_per_proc];
+  }
+
+  if (rank == 0) {
+    gettimeofday(&timstr, NULL);
+    tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
+  }
+  /* iterate for maxIters timesteps */
+  //TODO: free data once done with it
+
+  t_speed* sendbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
+  t_speed* recvbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
+
   for (int tt = 0; tt < params.maxIters; tt++)
   {
-    // TODO: send some o dat halo
-    timestep(params, sub_params, sub_cells, sub_tmp_cells, sub_obstacles, worldSize, rank);
+    for (int i = 0; i < cols_per_proc; i++) {
+      sendbuf[i] = sub_cells[i + cols_per_proc];
+      sendbuf[i + cols_per_proc] = sub_cells[i + (rows_per_proc * cols_per_proc)];
+    }
+
+    MPI_Neighbor_alltoall(sendbuf, NSPEEDS * cols_per_proc, MPI_FLOAT, recvbuf, NSPEEDS * cols_per_proc, MPI_FLOAT, cart_world);
+
+    for (int i = 0; i < cols_per_proc; i++) {
+      sub_cells[i + ((rows_per_proc + 1) * cols_per_proc)] = recvbuf[i + cols_per_proc];
+      sub_cells[i] = recvbuf[i];
+    }
+
+    timestep(sub_params, sub_cells, sub_tmp_cells, sub_obstacles, worldSize, rank);
     // TODO: reduce avg vels
     // av_vels[tt] = av_velocity(params, cells, obstacles);
 #ifdef DEBUG
@@ -219,8 +254,8 @@ int main(int argc, char* argv[])
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  MPI_Gather(sub_cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(sub_obstacles, cols_per_proc * rows_per_proc, MPI_INT, obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Gather((sub_cells  + cols_per_proc), NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gather((sub_obstacles + cols_per_proc), cols_per_proc * rows_per_proc, MPI_INT, obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
 
   MPI_Finalize();
 
@@ -238,12 +273,12 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-int timestep(const t_param params, const t_param sub_params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank)
+int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank)
 {
-  accelerate_flow(sub_params, cells, obstacles, worldSize, rank);
-  propagate(sub_params, cells, tmp_cells);
-  rebound(sub_params, cells, tmp_cells, obstacles);
-  collision(sub_params, cells, tmp_cells, obstacles);
+  accelerate_flow(params, cells, obstacles, worldSize, rank);
+  propagate(params, cells, tmp_cells);
+  rebound(params, cells, tmp_cells, obstacles);
+  collision(params, cells, tmp_cells, obstacles);
   return EXIT_SUCCESS;
 }
 
@@ -255,7 +290,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles, int wo
     float w2 = params.density * params.accel / 36.f;
 
     /* modify the 2nd row of the grid */
-    int jj = params.ny - 2;
+    int jj = params.ny - 1;
 
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -284,15 +319,15 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles, int wo
 int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 {
   /* loop over _all_ cells */
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.ny + 1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
       /* determine indices of axis-direction neighbours
       ** respecting periodic boundary conditions (wrap around) */
-      int y_n = (jj + 1) % params.ny;
+      int y_n = jj + 1;
       int x_e = (ii + 1) % params.nx;
-      int y_s = (jj == 0) ? (jj + params.ny - 1) : (jj - 1);
+      int y_s = jj - 1;
       int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
       /* propagate densities from neighbouring cells, following
       ** appropriate directions of travel and writing into
@@ -315,7 +350,7 @@ int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
 {
   /* loop over the cells in the grid */
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.ny + 1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -350,7 +385,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
   ** NB the collision step is called after
   ** the propagate step and so values of interest
   ** are in the scratch-space grid */
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.ny + 1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -451,7 +486,7 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles)
   tot_u = 0.f;
 
   /* loop over all non-blocked cells */
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.ny + 1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
