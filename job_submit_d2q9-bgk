@@ -1,9 +1,10 @@
 #!/bin/bash
 
 #SBATCH --job-name d2q9-bgk
-#SBATCH --nodes 1
-#SBATCH --ntasks-per-node 2
-#SBATCH --time 00:02:00
+#SBATCH --nodes 4
+#SBATCH --ntasks-per-node 1
+#SBATCH --cpus-per-task 28
+#SBATCH --time 00:01:00
 #SBATCH --partition cpu
 #SBATCH --output d2q9-bgk.out
 
