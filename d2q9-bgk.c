@@ -110,6 +110,7 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 ** The total should remain constant from one timestep to the next. */
 float total_density(const t_param params, t_speed* cells);
 
+float total_velocity(const t_param params, t_speed* cells, int* obstacles);
 /* compute average velocity */
 float av_velocity(const t_param params, t_speed* cells, int* obstacles);
 
@@ -164,11 +165,18 @@ int main(int argc, char* argv[])
     obstaclefile = argv[2];
   }
 
+  int tot_cells = 0;
   int rows_per_proc, cols_per_proc;
 
   /* initialise our data structures and load values from file */
   if (rank == 0) {
     initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels);
+    //Calc total number of non-obstacle cells
+    for (int j = 0; j < params.ny; j++) {
+      for (int i = 0; i < params.nx; i++) {
+        tot_cells += !obstacles[i + j * params.nx];
+      }
+    }
     rows_per_proc = params.ny / worldSize;
     cols_per_proc = params.nx;
   }
@@ -235,12 +243,19 @@ int main(int argc, char* argv[])
     }
 
     timestep(sub_params, sub_cells, sub_tmp_cells, sub_obstacles, worldSize, rank);
-    // TODO: reduce avg vels
-    // av_vels[tt] = av_velocity(params, cells, obstacles);
+
+    float local_tot_vel = total_velocity(sub_params, sub_cells, sub_obstacles);
+    float global_tot_vel;
+    MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+      av_vels[tt] = global_tot_vel / (float) tot_cells;
+    }
 #ifdef DEBUG
+  if (rank == 0) {
     printf("==timestep: %d==\n", tt);
-    // printf("av velocity: %.12E\n", av_vels[tt]);
+    printf("av velocity: %.12E\n", av_vels[tt]);
     printf("tot density: %.12E\n", total_density(sub_params, sub_cells));
+  }
 #endif
   }
 
@@ -477,6 +492,51 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
   return EXIT_SUCCESS;
 }
 
+float total_velocity(const t_param params, t_speed* cells, int* obstacles)
+{
+  float tot_u = 0.f;          /* accumulated magnitudes of velocity for each cell */
+
+  /* loop over all non-blocked cells */
+  for (int jj = 1; jj < params.ny + 1; jj++)
+  {
+    for (int ii = 0; ii < params.nx; ii++)
+    {
+      /* ignore occupied cells */
+      if (!obstacles[ii + jj*params.nx])
+      {
+        /* local density total */
+        float local_density = 0.f;
+
+        for (int kk = 0; kk < NSPEEDS; kk++)
+        {
+          local_density += cells[ii + jj*params.nx].speeds[kk];
+        }
+
+        /* x-component of velocity */
+        float u_x = (cells[ii + jj*params.nx].speeds[1]
+                      + cells[ii + jj*params.nx].speeds[5]
+                      + cells[ii + jj*params.nx].speeds[8]
+                      - (cells[ii + jj*params.nx].speeds[3]
+                         + cells[ii + jj*params.nx].speeds[6]
+                         + cells[ii + jj*params.nx].speeds[7]))
+                     / local_density;
+        /* compute y velocity component */
+        float u_y = (cells[ii + jj*params.nx].speeds[2]
+                      + cells[ii + jj*params.nx].speeds[5]
+                      + cells[ii + jj*params.nx].speeds[6]
+                      - (cells[ii + jj*params.nx].speeds[4]
+                         + cells[ii + jj*params.nx].speeds[7]
+                         + cells[ii + jj*params.nx].speeds[8]))
+                     / local_density;
+        /* accumulate the norm of x- and y- velocity components */
+        tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
+      }
+    }
+  }
+
+  return tot_u;
+}
+
 float av_velocity(const t_param params, t_speed* cells, int* obstacles)
 {
   int    tot_cells = 0;  /* no. of cells used in calculation */
@@ -486,7 +546,7 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles)
   tot_u = 0.f;
 
   /* loop over all non-blocked cells */
-  for (int jj = 1; jj < params.ny + 1; jj++)
+  for (int jj = 0; jj < params.ny; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
