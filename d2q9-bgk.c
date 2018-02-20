@@ -166,21 +166,49 @@ int main(int argc, char* argv[])
   }
 
   int tot_cells = 0;
-  int rows_per_proc, cols_per_proc;
+  int cols_per_proc;
+  int *send_cnts = malloc(sizeof(int) * worldSize);
+  int *send_cnts_int = malloc(sizeof(int) * worldSize);
+  int *row_cnts = malloc(sizeof(int) * worldSize);
+  int *displs = malloc(sizeof(int) * worldSize);
+  int *displs_int = malloc(sizeof(int) * worldSize);
 
   /* initialise our data structures and load values from file */
   if (rank == 0) {
     initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels);
+
     //Calc total number of non-obstacle cells
     for (int j = 0; j < params.ny; j++) {
       for (int i = 0; i < params.nx; i++) {
         tot_cells += !obstacles[i + j * params.nx];
       }
     }
-    rows_per_proc = params.ny / worldSize;
+
+    int rem = params.ny % worldSize;
+    int sum = 0;
+    int sum_int = 0;
+    for (int i = 0; i < worldSize; i++) {
+        row_cnts[i] = params.ny / worldSize;
+        if (rem > 0) {
+            row_cnts[i]++;
+            rem--;
+        }
+        send_cnts[i] = NSPEEDS * params.nx * row_cnts[i];
+        send_cnts_int[i] = params.nx * row_cnts[i];
+
+        displs[i] = sum;
+        sum += send_cnts[i];
+
+        displs_int[i] = sum_int;
+        sum_int += send_cnts_int[i];
+    }
     cols_per_proc = params.nx;
   }
-  MPI_Bcast(&rows_per_proc, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(send_cnts, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(send_cnts_int, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(row_cnts, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(displs, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(displs_int, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&cols_per_proc, 1, MPI_INT, 0, MPI_COMM_WORLD);
   // TODO use struct types
   MPI_Bcast(&(params.nx), 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -191,31 +219,31 @@ int main(int argc, char* argv[])
   MPI_Bcast(&(params.accel), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&(params.omega), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  t_speed* sub_cells     = malloc(sizeof(t_speed) * cols_per_proc * (rows_per_proc + 2));
-  t_speed* sub_tmp_cells = malloc(sizeof(t_speed) * cols_per_proc * (rows_per_proc + 2));
-  int*     sub_obstacles = malloc(sizeof(int) * cols_per_proc * (rows_per_proc + 2));
-
-  MPI_Scatter(cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, (sub_cells + cols_per_proc), NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Scatter(obstacles, cols_per_proc * rows_per_proc, MPI_INT, (sub_obstacles + cols_per_proc), cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
-
   t_param sub_params;
   memcpy(&sub_params, &params, sizeof(t_param));
-  sub_params.ny = rows_per_proc;
+  sub_params.ny = row_cnts[rank];
   sub_params.nx = cols_per_proc;
 
-  int* sendbufi = malloc(sizeof(int) * 2 * cols_per_proc);
-  int* recvbufi = malloc(sizeof(int) * 2 * cols_per_proc);
+  t_speed* sub_cells     = malloc(sizeof(t_speed) * sub_params.nx * (sub_params.ny + 2));
+  t_speed* sub_tmp_cells = malloc(sizeof(t_speed) * sub_params.nx * (sub_params.ny + 2));
+  int*     sub_obstacles = malloc(sizeof(int) * sub_params.nx * (sub_params.ny + 2));
 
-  for (int i = 0; i < cols_per_proc; i++) {
-    sendbufi[i] = sub_obstacles[i + cols_per_proc];
-    sendbufi[i + cols_per_proc] = sub_obstacles[i + (rows_per_proc * cols_per_proc)];
+  MPI_Scatterv(cells, send_cnts, displs, MPI_FLOAT, (sub_cells + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Scatterv(obstacles, send_cnts_int, displs_int, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts_int[rank], MPI_INT, 0, MPI_COMM_WORLD);
+
+  int* sendbufi = malloc(sizeof(int) * 2 * sub_params.nx);
+  int* recvbufi = malloc(sizeof(int) * 2 * sub_params.nx);
+
+  for (int i = 0; i < sub_params.nx; i++) {
+    sendbufi[i] = sub_obstacles[i + sub_params.nx];
+    sendbufi[i + sub_params.nx] = sub_obstacles[i + (sub_params.ny * sub_params.nx)];
   }
 
-  MPI_Neighbor_alltoall(sendbufi, cols_per_proc, MPI_INT, recvbufi, cols_per_proc, MPI_INT, cart_world);
+  MPI_Neighbor_alltoall(sendbufi, sub_params.nx, MPI_INT, recvbufi, sub_params.nx, MPI_INT, cart_world);
 
-  for (int i = 0; i < cols_per_proc; i++) {
+  for (int i = 0; i < sub_params.nx; i++) {
     sub_obstacles[i] = recvbufi[i];
-    sub_obstacles[i + ((rows_per_proc + 1) * cols_per_proc)] = recvbufi[i + cols_per_proc];
+    sub_obstacles[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbufi[i + sub_params.nx];
   }
 
   if (rank == 0) {
@@ -230,15 +258,15 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
-    for (int i = 0; i < cols_per_proc; i++) {
-      sendbuf[i] = sub_cells[i + cols_per_proc];
-      sendbuf[i + cols_per_proc] = sub_cells[i + (rows_per_proc * cols_per_proc)];
+    for (int i = 0; i < sub_params.nx; i++) {
+      sendbuf[i] = sub_cells[i + sub_params.nx];
+      sendbuf[i + sub_params.nx] = sub_cells[i + (sub_params.ny * sub_params.nx)];
     }
 
-    MPI_Neighbor_alltoall(sendbuf, NSPEEDS * cols_per_proc, MPI_FLOAT, recvbuf, NSPEEDS * cols_per_proc, MPI_FLOAT, cart_world);
+    MPI_Neighbor_alltoall(sendbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, recvbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, cart_world);
 
-    for (int i = 0; i < cols_per_proc; i++) {
-      sub_cells[i + ((rows_per_proc + 1) * cols_per_proc)] = recvbuf[i + cols_per_proc];
+    for (int i = 0; i < sub_params.nx; i++) {
+      sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i + sub_params.nx];
       sub_cells[i] = recvbuf[i];
     }
 
@@ -269,8 +297,8 @@ int main(int argc, char* argv[])
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  MPI_Gather((sub_cells  + cols_per_proc), NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, cells, NSPEEDS * cols_per_proc * rows_per_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather((sub_obstacles + cols_per_proc), cols_per_proc * rows_per_proc, MPI_INT, obstacles, cols_per_proc * rows_per_proc, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv((sub_cells + sub_params.nx), send_cnts[rank], MPI_FLOAT, cells, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts_int[rank], MPI_INT, obstacles, send_cnts_int, displs_int, MPI_INT, 0, MPI_COMM_WORLD);
 
   MPI_Finalize();
 
