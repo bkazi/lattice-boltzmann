@@ -231,21 +231,6 @@ int main(int argc, char* argv[])
   MPI_Scatterv(cells, send_cnts, displs, MPI_FLOAT, (sub_cells + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Scatterv(obstacles, send_cnts_int, displs_int, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts_int[rank], MPI_INT, 0, MPI_COMM_WORLD);
 
-  int* sendbufi = malloc(sizeof(int) * 2 * sub_params.nx);
-  int* recvbufi = malloc(sizeof(int) * 2 * sub_params.nx);
-
-  for (int i = 0; i < sub_params.nx; i++) {
-    sendbufi[i] = sub_obstacles[i + sub_params.nx];
-    sendbufi[i + sub_params.nx] = sub_obstacles[i + (sub_params.ny * sub_params.nx)];
-  }
-
-  MPI_Neighbor_alltoall(sendbufi, sub_params.nx, MPI_INT, recvbufi, sub_params.nx, MPI_INT, cart_world);
-
-  for (int i = 0; i < sub_params.nx; i++) {
-    sub_obstacles[i] = recvbufi[i];
-    sub_obstacles[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbufi[i + sub_params.nx];
-  }
-
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
     tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
