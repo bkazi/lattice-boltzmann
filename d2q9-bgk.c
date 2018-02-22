@@ -242,21 +242,17 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
-    for (int i = 0; i < sub_params.nx; i++) {
-      sendbuf[i] = sub_cells[i + sub_params.nx];
-      sendbuf[i + sub_params.nx] = sub_cells[i + (sub_params.ny * sub_params.nx)];
-    }
+    memcpy(sendbuf, sub_cells + sub_params.nx, sizeof(t_speed) * sub_params.nx);
+    memcpy(sendbuf + sub_params.nx, sub_cells + (sub_params.ny * sub_params.nx), sizeof(t_speed) * sub_params.nx);
 
     MPI_Neighbor_alltoall(sendbuf, sub_params.nx, MPI_T_SPEED, recvbuf, sub_params.nx, MPI_T_SPEED, cart_world);
 
-    for (int i = 0; i < sub_params.nx; i++) {
-      if (worldSize != 2) {
-        sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i + sub_params.nx];
-        sub_cells[i] = recvbuf[i];
-      } else {
-        sub_cells[i] = recvbuf[i + sub_params.nx];
-        sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i];
-      }
+    if (worldSize != 2) {
+      memcpy(sub_cells + ((sub_params.ny + 1) * sub_params.nx), recvbuf + sub_params.nx, sizeof(t_speed) * sub_params.nx);
+      memcpy(sub_cells, recvbuf, sizeof(t_speed) * sub_params.nx);
+    } else {
+      memcpy(sub_cells, recvbuf + sub_params.nx, sizeof(t_speed) * sub_params.nx);
+      memcpy(sub_cells + ((sub_params.ny + 1) * sub_params.nx), recvbuf, sizeof(t_speed) * sub_params.nx);
     }
 
     timestep(sub_params, sub_cells, sub_tmp_cells, sub_obstacles, worldSize, rank);
