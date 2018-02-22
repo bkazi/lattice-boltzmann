@@ -251,8 +251,13 @@ int main(int argc, char* argv[])
     MPI_Neighbor_alltoall(sendbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, recvbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, cart_world);
 
     for (int i = 0; i < sub_params.nx; i++) {
-      sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i + sub_params.nx];
-      sub_cells[i] = recvbuf[i];
+      if (worldSize != 2) {
+        sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i + sub_params.nx];
+        sub_cells[i] = recvbuf[i];
+      } else {
+        sub_cells[i] = recvbuf[i + sub_params.nx];
+        sub_cells[i + ((sub_params.ny + 1) * sub_params.nx)] = recvbuf[i];
+      }
     }
 
     timestep(sub_params, sub_cells, sub_tmp_cells, sub_obstacles, worldSize, rank);
