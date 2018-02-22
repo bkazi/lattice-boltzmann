@@ -96,7 +96,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
 int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank);
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles, int worldSize, int rank);
+int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
 int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells);
 int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
@@ -145,6 +145,20 @@ int main(int argc, char* argv[])
 
   MPI_Init(NULL, NULL);
 
+  MPI_Datatype MPI_T_SPEED;
+  MPI_Datatype types[] = {MPI_FLOAT};
+  int blocklen[] = {NSPEEDS};
+  MPI_Aint disp[] = {0};
+  MPI_Type_create_struct(1, blocklen, disp, types, &MPI_T_SPEED);
+  MPI_Type_commit(&MPI_T_SPEED);
+
+  MPI_Datatype MPI_T_PARAM;
+  MPI_Datatype types2[] = {MPI_INT, MPI_INT, MPI_INT, MPI_INT, MPI_FLOAT, MPI_FLOAT, MPI_FLOAT};
+  int blocklen2[] = {1, 1, 1, 1, 1, 1, 1};
+  MPI_Aint disp2[] = {0, 1 * sizeof(int), 2 * sizeof(int), 3 * sizeof(int), 4 * sizeof(int), 4 * sizeof(float) + sizeof(float), 4 * sizeof(int) + 2 * sizeof(float)};
+  MPI_Type_create_struct(7, blocklen2, disp2, types2, &MPI_T_PARAM);
+  MPI_Type_commit(&MPI_T_PARAM);
+
   MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -168,10 +182,8 @@ int main(int argc, char* argv[])
   int tot_cells = 0;
   int cols_per_proc;
   int *send_cnts = malloc(sizeof(int) * worldSize);
-  int *send_cnts_int = malloc(sizeof(int) * worldSize);
   int *row_cnts = malloc(sizeof(int) * worldSize);
   int *displs = malloc(sizeof(int) * worldSize);
-  int *displs_int = malloc(sizeof(int) * worldSize);
 
   /* initialise our data structures and load values from file */
   if (rank == 0) {
@@ -193,31 +205,18 @@ int main(int argc, char* argv[])
             row_cnts[i]++;
             rem--;
         }
-        send_cnts[i] = NSPEEDS * params.nx * row_cnts[i];
-        send_cnts_int[i] = params.nx * row_cnts[i];
+        send_cnts[i] = params.nx * row_cnts[i];
 
         displs[i] = sum;
         sum += send_cnts[i];
-
-        displs_int[i] = sum_int;
-        sum_int += send_cnts_int[i];
     }
     cols_per_proc = params.nx;
   }
   MPI_Bcast(send_cnts, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(send_cnts_int, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(row_cnts, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(displs, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(displs_int, worldSize, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&cols_per_proc, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  // TODO use struct types
-  MPI_Bcast(&(params.nx), 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.ny), 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.maxIters), 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.reynolds_dim), 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.density), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.accel), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&(params.omega), 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&params, 1, MPI_T_PARAM, 0, MPI_COMM_WORLD);
 
   t_param sub_params;
   memcpy(&sub_params, &params, sizeof(t_param));
@@ -228,8 +227,8 @@ int main(int argc, char* argv[])
   t_speed* sub_tmp_cells = malloc(sizeof(t_speed) * sub_params.nx * (sub_params.ny + 2));
   int*     sub_obstacles = malloc(sizeof(int) * sub_params.nx * (sub_params.ny + 2));
 
-  MPI_Scatterv(cells, send_cnts, displs, MPI_FLOAT, (sub_cells + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Scatterv(obstacles, send_cnts_int, displs_int, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts_int[rank], MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Scatterv(cells, send_cnts, displs, MPI_T_SPEED, (sub_cells + sub_params.nx), send_cnts[rank], MPI_T_SPEED, 0, MPI_COMM_WORLD);
+  MPI_Scatterv(obstacles, send_cnts, displs, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, 0, MPI_COMM_WORLD);
 
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
@@ -248,7 +247,7 @@ int main(int argc, char* argv[])
       sendbuf[i + sub_params.nx] = sub_cells[i + (sub_params.ny * sub_params.nx)];
     }
 
-    MPI_Neighbor_alltoall(sendbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, recvbuf, NSPEEDS * sub_params.nx, MPI_FLOAT, cart_world);
+    MPI_Neighbor_alltoall(sendbuf, sub_params.nx, MPI_T_SPEED, recvbuf, sub_params.nx, MPI_T_SPEED, cart_world);
 
     for (int i = 0; i < sub_params.nx; i++) {
       if (worldSize != 2) {
@@ -287,8 +286,8 @@ int main(int argc, char* argv[])
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  MPI_Gatherv((sub_cells + sub_params.nx), send_cnts[rank], MPI_FLOAT, cells, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts_int[rank], MPI_INT, obstacles, send_cnts_int, displs_int, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv((sub_cells + sub_params.nx), send_cnts[rank], MPI_T_SPEED, cells, send_cnts, displs, MPI_T_SPEED, 0, MPI_COMM_WORLD);
+  MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, obstacles, send_cnts, displs, MPI_INT, 0, MPI_COMM_WORLD);
 
   MPI_Finalize();
 
@@ -308,41 +307,41 @@ int main(int argc, char* argv[])
 
 int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank)
 {
-  accelerate_flow(params, cells, obstacles, worldSize, rank);
+  if ((worldSize - 1) == rank) {
+    accelerate_flow(params, cells, obstacles);
+  }
   propagate(params, cells, tmp_cells);
   rebound(params, cells, tmp_cells, obstacles);
   collision(params, cells, tmp_cells, obstacles);
   return EXIT_SUCCESS;
 }
 
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles, int worldSize, int rank)
+int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
 {
-  if ((worldSize - 1) == rank) {
-    /* compute weighting factors */
-    float w1 = params.density * params.accel / 9.f;
-    float w2 = params.density * params.accel / 36.f;
+  /* compute weighting factors */
+  float w1 = params.density * params.accel / 9.f;
+  float w2 = params.density * params.accel / 36.f;
 
-    /* modify the 2nd row of the grid */
-    int jj = params.ny - 1;
+  /* modify the 2nd row of the grid */
+  int jj = params.ny - 1;
 
-    for (int ii = 0; ii < params.nx; ii++)
+  for (int ii = 0; ii < params.nx; ii++)
+  {
+    /* if the cell is not occupied and
+    ** we don't send a negative density */
+    if (!obstacles[ii + jj*params.nx]
+        && (cells[ii + jj*params.nx].speeds[3] - w1) > 0.f
+        && (cells[ii + jj*params.nx].speeds[6] - w2) > 0.f
+        && (cells[ii + jj*params.nx].speeds[7] - w2) > 0.f)
     {
-      /* if the cell is not occupied and
-      ** we don't send a negative density */
-      if (!obstacles[ii + jj*params.nx]
-          && (cells[ii + jj*params.nx].speeds[3] - w1) > 0.f
-          && (cells[ii + jj*params.nx].speeds[6] - w2) > 0.f
-          && (cells[ii + jj*params.nx].speeds[7] - w2) > 0.f)
-      {
-        /* increase 'east-side' densities */
-        cells[ii + jj*params.nx].speeds[1] += w1;
-        cells[ii + jj*params.nx].speeds[5] += w2;
-        cells[ii + jj*params.nx].speeds[8] += w2;
-        /* decrease 'west-side' densities */
-        cells[ii + jj*params.nx].speeds[3] -= w1;
-        cells[ii + jj*params.nx].speeds[6] -= w2;
-        cells[ii + jj*params.nx].speeds[7] -= w2;
-      }
+      /* increase 'east-side' densities */
+      cells[ii + jj*params.nx].speeds[1] += w1;
+      cells[ii + jj*params.nx].speeds[5] += w2;
+      cells[ii + jj*params.nx].speeds[8] += w2;
+      /* decrease 'west-side' densities */
+      cells[ii + jj*params.nx].speeds[3] -= w1;
+      cells[ii + jj*params.nx].speeds[6] -= w2;
+      cells[ii + jj*params.nx].speeds[7] -= w2;
     }
   }
 
