@@ -242,6 +242,10 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
+    if ((worldSize - 1) == rank) {
+      accelerate_flow(sub_params, sub_cells, sub_obstacles);
+    }
+
     memcpy(sendbuf, sub_cells + sub_params.nx, sizeof(t_speed) * sub_params.nx);
     memcpy(sendbuf + sub_params.nx, sub_cells + (sub_params.ny * sub_params.nx), sizeof(t_speed) * sub_params.nx);
 
@@ -303,9 +307,7 @@ int main(int argc, char* argv[])
 
 int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int worldSize, int rank)
 {
-  if ((worldSize - 1) == rank) {
-    accelerate_flow(params, cells, obstacles);
-  }
+  //TODO: Merge
   propagate(params, cells, tmp_cells);
   rebound(params, cells, tmp_cells, obstacles);
   collision(params, cells, tmp_cells, obstacles);
