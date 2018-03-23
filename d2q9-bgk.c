@@ -230,15 +230,18 @@ int main(int argc, char* argv[])
   MPI_Scatterv(cells, send_cnts, displs, MPI_T_SPEED, (sub_cells + sub_params.nx), send_cnts[rank], MPI_T_SPEED, 0, MPI_COMM_WORLD);
   MPI_Scatterv(obstacles, send_cnts, displs, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, 0, MPI_COMM_WORLD);
 
+  MPI_Request haloRequest;
+  MPI_Status haloStatus;
+
+  t_speed* sendbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
+  t_speed* recvbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
+
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
     tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
   /* iterate for maxIters timesteps */
   //TODO: free data once done with it
-
-  t_speed* sendbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
-  t_speed* recvbuf = malloc(sizeof(t_speed) * 2 * cols_per_proc);
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
@@ -249,7 +252,10 @@ int main(int argc, char* argv[])
     memcpy(sendbuf, sub_cells + sub_params.nx, sizeof(t_speed) * sub_params.nx);
     memcpy(sendbuf + sub_params.nx, sub_cells + (sub_params.ny * sub_params.nx), sizeof(t_speed) * sub_params.nx);
 
-    MPI_Neighbor_alltoall(sendbuf, sub_params.nx, MPI_T_SPEED, recvbuf, sub_params.nx, MPI_T_SPEED, cart_world);
+    MPI_Ineighbor_alltoall(sendbuf, sub_params.nx, MPI_T_SPEED, recvbuf, sub_params.nx, MPI_T_SPEED, cart_world, &haloRequest);
+
+
+    MPI_Wait(&haloRequest, &haloStatus);
 
     if (worldSize != 2) {
       memcpy(sub_cells + ((sub_params.ny + 1) * sub_params.nx), recvbuf + sub_params.nx, sizeof(t_speed) * sub_params.nx);
