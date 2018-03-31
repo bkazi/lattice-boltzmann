@@ -428,16 +428,6 @@ int main(int argc, char* argv[]) {
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  sub_speed0 = pSub_speed0;
-  sub_speed1 = pSub_speed1;
-  sub_speed2 = pSub_speed2;
-  sub_speed3 = pSub_speed3;
-  sub_speed4 = pSub_speed4;
-  sub_speed5 = pSub_speed5;
-  sub_speed6 = pSub_speed6;
-  sub_speed7 = pSub_speed7;
-  sub_speed8 = pSub_speed8;
-
   MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, obstacles, send_cnts, displs, MPI_INT, 0, MPI_COMM_WORLD);
 
   MPI_Gatherv((sub_speed0 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed0, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
