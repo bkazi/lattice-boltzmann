@@ -266,8 +266,8 @@ int main(int argc, char* argv[]) {
   MPI_Scatterv(speeds->speed7, send_cnts, displs, MPI_FLOAT, (sub_speeds->speed7 + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Scatterv(speeds->speed8, send_cnts, displs, MPI_FLOAT, (sub_speeds->speed8 + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  MPI_Request haloRequest0, haloRequest1, haloRequest2, haloRequest3, haloRequest4, haloRequest5, haloRequest6, haloRequest7, haloRequest8;
-  MPI_Status haloStatus0, haloStatus1, haloStatus2, haloStatus3, haloStatus4, haloStatus5, haloStatus6, haloStatus7, haloStatus8;
+  MPI_Request haloRequests[NSPEEDS];
+  MPI_Status haloStatuses[NSPEEDS];
   s_speeds *swp;
 
   float* sendbuf0 = malloc(sizeof(float) * 2 * cols_per_proc);
@@ -321,28 +321,19 @@ int main(int argc, char* argv[]) {
     memcpy(sendbuf8, sub_speeds->speed8 + sub_params.nx, sizeof(float) * sub_params.nx);
     memcpy(sendbuf8 + sub_params.nx, sub_speeds->speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
 
-    MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest0);
-    MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest1);
-    MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest2);
-    MPI_Ineighbor_alltoall(sendbuf3, sub_params.nx, MPI_FLOAT, recvbuf3, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest3);
-    MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest4);
-    MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest5);
-    MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest6);
-    MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest7);
-    MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequest8);
+    MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
+    MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
+    MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[2]);
+    MPI_Ineighbor_alltoall(sendbuf3, sub_params.nx, MPI_FLOAT, recvbuf3, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
+    MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[4]);
+    MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[5]);
+    MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[6]);
+    MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[7]);
+    MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[8]);
 
-    #pragma forceinline
     timestepInner(sub_params, sub_speeds, sub_tmp_speeds, sub_obstacles);
 
-    MPI_Wait(&haloRequest0, &haloStatus0);
-    MPI_Wait(&haloRequest1, &haloStatus1);
-    MPI_Wait(&haloRequest2, &haloStatus2);
-    MPI_Wait(&haloRequest3, &haloStatus3);
-    MPI_Wait(&haloRequest4, &haloStatus4);
-    MPI_Wait(&haloRequest5, &haloStatus5);
-    MPI_Wait(&haloRequest6, &haloStatus6);
-    MPI_Wait(&haloRequest7, &haloStatus7);
-    MPI_Wait(&haloRequest8, &haloStatus8);
+    MPI_Waitall(NSPEEDS, haloRequests, haloStatuses);
 
     if (worldSize != 2) {
       memcpy(sub_speeds->speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
@@ -384,7 +375,6 @@ int main(int argc, char* argv[]) {
       memcpy(sub_speeds->speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
     }
 
-    #pragma forceinline
     timestepOuter(sub_params, sub_speeds, sub_tmp_speeds, sub_obstacles);
     swp = sub_speeds;
     sub_speeds = sub_tmp_speeds;
@@ -392,7 +382,7 @@ int main(int argc, char* argv[]) {
 
     float local_tot_vel = total_velocity(sub_params, sub_speeds, sub_obstacles);
     float global_tot_vel;
-    MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
       av_vels[tt] = global_tot_vel / (float) tot_cells;
     }
