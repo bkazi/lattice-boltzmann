@@ -516,7 +516,7 @@ float timestep(const t_param params, float* __restrict__ speed0, float* __restri
 
       /* velocity squared */
       u_sq = u_x * u_x + u_y * u_y;
-      tot_u += !obstacles[ii + jj*params.nx] ? u_sq : 0;
+      tot_u += !obstacles[ii + jj*params.nx] ? sqrtf(u_sq) : 0;
 
       /* directional velocity components */
       float u[NSPEEDS];
