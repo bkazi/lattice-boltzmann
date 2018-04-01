@@ -2,10 +2,11 @@
 
 #SBATCH --job-name d2q9-bgk
 #SBATCH --nodes 4
-#SBATCH --ntasks-per-node 28
+#SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task 1
+#SBATCH --gres=gpu:2
 #SBATCH --time 00:01:00
-#SBATCH --partition cpu
+#SBATCH --partition gpu
 #SBATCH --output d2q9-bgk.out
 
 echo Running on host `hostname`
@@ -15,5 +16,8 @@ echo Slurm job ID is $SLURM_JOB_ID
 echo This job runs on the following machines:
 echo `echo $SLURM_JOB_NODELIST | uniq`
 
+size="128x128"
+args="input_$size.params obstacles_$size.dat"
+
 #! Run the executable
-mpirun ./d2q9-bgk input_128x128.params obstacles_128x128.dat
+mpirun -ppn 1 -env CUDA_VISIBLE_DEVICES 0 ./d2q9-bgk $args : -env CUDA_VISIBLE_DEVICES 1 ./d2q9-bgk $args
