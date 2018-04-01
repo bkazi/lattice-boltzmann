@@ -113,8 +113,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** timestep calls, in order, the functions:
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
-int timestepInner(const t_param params, s_speeds* speeds, s_speeds* tmp_speeds, int* obstacles);
-int timestepOuter(const t_param params, s_speeds* speeds, s_speeds* tmp_speeds, int* obstacles);
+float timestepInner(const t_param params, s_speeds* speeds, s_speeds* tmp_speeds, int* obstacles);
+float timestepOuter(const t_param params, s_speeds* speeds, s_speeds* tmp_speeds, int* obstacles);
 int accelerate_flow(const t_param params, s_speeds* speeds, int* obstacles);
 int write_values(const t_param params, s_speeds* speeds, int* obstacles, float* av_vels);
 
@@ -290,6 +290,9 @@ int main(int argc, char* argv[]) {
   float* recvbuf7 = malloc(sizeof(float) * 2 * cols_per_proc);
   float* recvbuf8 = malloc(sizeof(float) * 2 * cols_per_proc);
 
+  float local_tot_vel = 0;
+  float global_tot_vel;
+
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
     tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -321,24 +324,17 @@ int main(int argc, char* argv[]) {
     memcpy(sendbuf8, sub_speeds->speed8 + sub_params.nx, sizeof(float) * sub_params.nx);
     memcpy(sendbuf8 + sub_params.nx, sub_speeds->speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
 
-    if (worldSize > 1) {
-      MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
-      MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
-      MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[2]);
-      MPI_Ineighbor_alltoall(sendbuf3, sub_params.nx, MPI_FLOAT, recvbuf3, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
-      MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[4]);
-      MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[5]);
-      MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[6]);
-      MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[7]);
-      MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[8]);
-    }
+    MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
+    MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
+    MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[2]);
+    MPI_Ineighbor_alltoall(sendbuf3, sub_params.nx, MPI_FLOAT, recvbuf3, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
+    MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[4]);
+    MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[5]);
+    MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[6]);
+    MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[7]);
+    MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[8]);
 
-    #pragma forceinline
-    timestepInner(sub_params, sub_speeds, sub_tmp_speeds, sub_obstacles);
-
-    if (worldSize > 1) {
-      MPI_Waitall(NSPEEDS, haloRequests, haloStatuses);
-    }
+    MPI_Waitall(NSPEEDS, haloRequests, haloStatuses);
 
     if (worldSize != 2) {
       memcpy(sub_speeds->speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
@@ -380,19 +376,12 @@ int main(int argc, char* argv[]) {
       memcpy(sub_speeds->speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
     }
 
-    #pragma forceinline
-    timestepOuter(sub_params, sub_speeds, sub_tmp_speeds, sub_obstacles);
+    local_tot_vel = timestepInner(sub_params, sub_speeds, sub_tmp_speeds, sub_obstacles);
     swp = sub_speeds;
     sub_speeds = sub_tmp_speeds;
     sub_tmp_speeds = swp;
 
-    float local_tot_vel = total_velocity(sub_params, sub_speeds, sub_obstacles);
-    float global_tot_vel;
-    if (worldSize > 1) {
-      MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
-    } else {
-      memcpy(&global_tot_vel, &local_tot_vel, sizeof(float));
-    }
+    MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
       av_vels[tt] = global_tot_vel / (float) tot_cells;
     }
@@ -443,20 +432,21 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-int timestepInner(const t_param params, s_speeds* restrict speeds, s_speeds* restrict tmp_speeds, int* obstacles) {
+float timestepInner(const t_param params, s_speeds* restrict speeds, s_speeds* restrict tmp_speeds, int* obstacles) {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
   const float w1 = 1.f / 9.f;  /* weighting factor */
   const float w2 = 1.f / 36.f; /* weighting factor */
 
   s_tmp_speeds tmpSpeed;
+  float tot_u = 0;
 
   int y_n, x_e, y_s, x_w;
   float local_density, u_x, u_y, u_sq;
   /* loop over _all_ cells */
   #pragma vector aligned
-  #pragma omp simd collapse(2) private(tmpSpeed, y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq)
-  for (int jj = 2; jj < params.ny; jj++) {
+  #pragma omp simd private(tmpSpeed, y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq) reduction(+:tot_u)
+  for (int jj = 1; jj < params.ny + 1; jj++) {
     for (int ii = 0; ii < params.nx; ii++) {
       /* determine indices of axis-direction neighbours
       ** respecting periodic boundary conditions (wrap around) */
@@ -510,6 +500,7 @@ int timestepInner(const t_param params, s_speeds* restrict speeds, s_speeds* res
 
         /* velocity squared */
         u_sq = u_x * u_x + u_y * u_y;
+        tot_u += sqrtf(u_sq);
 
         /* directional velocity components */
         float u[NSPEEDS];
@@ -595,22 +586,23 @@ int timestepInner(const t_param params, s_speeds* restrict speeds, s_speeds* res
       }
     }
   }
-  return EXIT_SUCCESS;
+  return tot_u;
 }
 
-int timestepOuter(const t_param params, s_speeds* restrict speeds, s_speeds* restrict tmp_speeds, int* obstacles) {
+float timestepOuter(const t_param params, s_speeds* restrict speeds, s_speeds* restrict tmp_speeds, int* obstacles) {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
   const float w1 = 1.f / 9.f;  /* weighting factor */
   const float w2 = 1.f / 36.f; /* weighting factor */
 
   s_tmp_speeds tmpSpeed;
+  float tot_u = 0;
 
   int y_n, x_e, y_s, x_w;
   float local_density, u_x, u_y, u_sq;
   int jj;
   #pragma vector aligned
-  #pragma omp simd collapse(2) private(jj ,tmpSpeed, y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq)
+  #pragma omp simd private(jj ,tmpSpeed, y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq) reduction(+:tot_u)
   for (int c = 0; c < 2; c++) {
     for (int ii = 0; ii < params.nx; ii++) {
       jj = c == 0 ? 1 : params.ny;
@@ -666,6 +658,7 @@ int timestepOuter(const t_param params, s_speeds* restrict speeds, s_speeds* res
 
         /* velocity squared */
         u_sq = u_x * u_x + u_y * u_y;
+        tot_u += u_sq;
 
         /* directional velocity components */
         float u[NSPEEDS];
@@ -751,7 +744,7 @@ int timestepOuter(const t_param params, s_speeds* restrict speeds, s_speeds* res
       }
     }
   }
-  return EXIT_SUCCESS;
+  return tot_u;
 }
 
 int accelerate_flow(const t_param params, s_speeds* speeds, int* obstacles)
