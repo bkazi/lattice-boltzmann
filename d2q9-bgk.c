@@ -56,6 +56,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <omp.h>
 
 #include "mpi.h"
 
@@ -273,24 +274,15 @@ int main(int argc, char* argv[]) {
   float* recvbuf7 = (float *) malloc(sizeof(float) * 2 * cols_per_proc);
   float* recvbuf8 = (float *) malloc(sizeof(float) * 2 * cols_per_proc);
 
-  float* pSub_speed0 = sub_speed0;
-  float* pSub_speed1 = sub_speed1;
-  float* pSub_speed2 = sub_speed2;
-  float* pSub_speed3 = sub_speed3;
-  float* pSub_speed4 = sub_speed4;
-  float* pSub_speed5 = sub_speed5;
-  float* pSub_speed6 = sub_speed6;
-  float* pSub_speed7 = sub_speed7;
-  float* pSub_speed8 = sub_speed8;
-  float* pSub_tmp_speed0 = sub_tmp_speed0;
-  float* pSub_tmp_speed1 = sub_tmp_speed1;
-  float* pSub_tmp_speed2 = sub_tmp_speed2;
-  float* pSub_tmp_speed3 = sub_tmp_speed3;
-  float* pSub_tmp_speed4 = sub_tmp_speed4;
-  float* pSub_tmp_speed5 = sub_tmp_speed5;
-  float* pSub_tmp_speed6 = sub_tmp_speed6;
-  float* pSub_tmp_speed7 = sub_tmp_speed7;
-  float* pSub_tmp_speed8 = sub_tmp_speed8;
+  float* swp_speed0;
+  float* swp_speed1;
+  float* swp_speed2;
+  float* swp_speed3;
+  float* swp_speed4;
+  float* swp_speed5;
+  float* swp_speed6;
+  float* swp_speed7;
+  float* swp_speed8;
   float local_tot_vel, global_tot_vel;
 
   if (rank == 0) {
@@ -300,31 +292,31 @@ int main(int argc, char* argv[]) {
 
 
   /* iterate for maxIters timesteps */
-  #pragma omp target enter data map(to: sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_tmp_speed0[0:N], sub_tmp_speed1[0:N], sub_tmp_speed2[0:N], sub_tmp_speed3[0:N], sub_tmp_speed4[0:N], sub_tmp_speed5[0:N], sub_tmp_speed6[0:N], sub_tmp_speed7[0:N], sub_tmp_speed8[0:N])
+  #pragma omp target enter data map(to: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N])
   for (int tt = 0; tt < params.maxIters; tt++)
   {
     if ((worldSize - 1) == rank) {
-      accelerate_flow(sub_params, pSub_speed0, pSub_speed1, pSub_speed2, pSub_speed3, pSub_speed4, pSub_speed5, pSub_speed6, pSub_speed7, pSub_speed8, sub_obstacles);
+      accelerate_flow(sub_params, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_obstacles);
     }
 
-    memcpy(sendbuf0, pSub_speed0 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf0 + sub_params.nx, pSub_speed0 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf1, pSub_speed1 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf1 + sub_params.nx, pSub_speed1 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf2, pSub_speed2 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf2 + sub_params.nx, pSub_speed2 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf3, pSub_speed3 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf3 + sub_params.nx, pSub_speed3 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf4, pSub_speed4 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf4 + sub_params.nx, pSub_speed4 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf5, pSub_speed5 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf5 + sub_params.nx, pSub_speed5 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf6, pSub_speed6 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf6 + sub_params.nx, pSub_speed6 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf7, pSub_speed7 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf7 + sub_params.nx, pSub_speed7 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf8, pSub_speed8 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf8 + sub_params.nx, pSub_speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf0, sub_speed0 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf0 + sub_params.nx, sub_speed0 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf1, sub_speed1 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf1 + sub_params.nx, sub_speed1 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf2, sub_speed2 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf2 + sub_params.nx, sub_speed2 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf3, sub_speed3 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf3 + sub_params.nx, sub_speed3 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf4, sub_speed4 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf4 + sub_params.nx, sub_speed4 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf5, sub_speed5 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf5 + sub_params.nx, sub_speed5 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf6, sub_speed6 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf6 + sub_params.nx, sub_speed6 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf7, sub_speed7 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf7 + sub_params.nx, sub_speed7 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf8, sub_speed8 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf8 + sub_params.nx, sub_speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
 
     MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
     MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
@@ -339,64 +331,73 @@ int main(int argc, char* argv[]) {
     MPI_Waitall(NSPEEDS, haloRequests, haloStatuses);
 
     if (worldSize != 2) {
-      memcpy(pSub_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed0, recvbuf0, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed1, recvbuf1, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed2, recvbuf2, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed3, recvbuf3, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed4, recvbuf4, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed5, recvbuf5, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed6, recvbuf6, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed7, recvbuf7, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed8, recvbuf8, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed0, recvbuf0, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed1, recvbuf1, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed2, recvbuf2, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed3, recvbuf3, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed4, recvbuf4, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed5, recvbuf5, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed6, recvbuf6, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed7, recvbuf7, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed8, recvbuf8, sizeof(float) * sub_params.nx);
     } else {
-      memcpy(pSub_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed0, recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed1, recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed2, recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed3, recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed4, recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed5, recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed6, recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed7, recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8, sizeof(float) * sub_params.nx);
-      memcpy(pSub_speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed0, recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed1, recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed2, recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed3, recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed4, recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed5, recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed6, recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed7, recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8, sizeof(float) * sub_params.nx);
+      memcpy(sub_speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
     }
 
-    local_tot_vel = timestep(sub_params, pSub_speed0, pSub_speed1, pSub_speed2, pSub_speed3, pSub_speed4, pSub_speed5, pSub_speed6, pSub_speed7, pSub_speed8, pSub_tmp_speed0, pSub_tmp_speed1, pSub_tmp_speed2, pSub_tmp_speed3, pSub_tmp_speed4, pSub_tmp_speed5, pSub_tmp_speed6, pSub_tmp_speed7, pSub_tmp_speed8, sub_obstacles);
-    pSub_speed0 = (tt % 2) ? sub_speed0 : sub_tmp_speed0;
-    pSub_speed1 = (tt % 2) ? sub_speed1 : sub_tmp_speed1;
-    pSub_speed2 = (tt % 2) ? sub_speed2 : sub_tmp_speed2;
-    pSub_speed3 = (tt % 2) ? sub_speed3 : sub_tmp_speed3;
-    pSub_speed4 = (tt % 2) ? sub_speed4 : sub_tmp_speed4;
-    pSub_speed5 = (tt % 2) ? sub_speed5 : sub_tmp_speed5;
-    pSub_speed6 = (tt % 2) ? sub_speed6 : sub_tmp_speed6;
-    pSub_speed7 = (tt % 2) ? sub_speed7 : sub_tmp_speed7;
-    pSub_speed8 = (tt % 2) ? sub_speed8 : sub_tmp_speed8;
-    pSub_tmp_speed0 = (tt % 2) ? sub_tmp_speed0 : sub_speed0;
-    pSub_tmp_speed1 = (tt % 2) ? sub_tmp_speed1 : sub_speed1;
-    pSub_tmp_speed2 = (tt % 2) ? sub_tmp_speed2 : sub_speed2;
-    pSub_tmp_speed3 = (tt % 2) ? sub_tmp_speed3 : sub_speed3;
-    pSub_tmp_speed4 = (tt % 2) ? sub_tmp_speed4 : sub_speed4;
-    pSub_tmp_speed5 = (tt % 2) ? sub_tmp_speed5 : sub_speed5;
-    pSub_tmp_speed6 = (tt % 2) ? sub_tmp_speed6 : sub_speed6;
-    pSub_tmp_speed7 = (tt % 2) ? sub_tmp_speed7 : sub_speed7;
-    pSub_tmp_speed8 = (tt % 2) ? sub_tmp_speed8 : sub_speed8;
+    local_tot_vel = timestep(sub_params, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_obstacles);
+    swp_speed0 = sub_speed0;
+    sub_speed0 = sub_tmp_speed0;
+    sub_tmp_speed0 = swp_speed0;
+    swp_speed1 = sub_speed1;
+    sub_speed1 = sub_tmp_speed1;
+    sub_tmp_speed1 = swp_speed1;
+    swp_speed2 = sub_speed2;
+    sub_speed2 = sub_tmp_speed2;
+    sub_tmp_speed2 = swp_speed2;
+    swp_speed3 = sub_speed3;
+    sub_speed3 = sub_tmp_speed3;
+    sub_tmp_speed3 = swp_speed3;
+    swp_speed4 = sub_speed4;
+    sub_speed4 = sub_tmp_speed4;
+    sub_tmp_speed4 = swp_speed4;
+    swp_speed5 = sub_speed5;
+    sub_speed5 = sub_tmp_speed5;
+    sub_tmp_speed5 = swp_speed5;
+    swp_speed6 = sub_speed6;
+    sub_speed6 = sub_tmp_speed6;
+    sub_tmp_speed6 = swp_speed6;
+    swp_speed7 = sub_speed7;
+    sub_speed7 = sub_tmp_speed7;
+    sub_tmp_speed7 = swp_speed7;
+    swp_speed8 = sub_speed8;
+    sub_speed8 = sub_tmp_speed8;
+    sub_tmp_speed8 = swp_speed8;
 
     MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
@@ -406,11 +407,11 @@ int main(int argc, char* argv[]) {
   if (rank == 0) {
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
-    printf("tot density: %.12E\n", total_density(sub_params, pSub_speed0, pSub_speed1, pSub_speed2, pSub_speed3, pSub_speed4, pSub_speed5, pSub_speed6, pSub_speed7, pSub_speed8));
+    printf("tot density: %.12E\n", total_density(sub_params, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8));
   }
 #endif
   }
-  #pragma omp target exit data map(from: sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_tmp_speed0[0:N], sub_tmp_speed1[0:N], sub_tmp_speed2[0:N], sub_tmp_speed3[0:N], sub_tmp_speed4[0:N], sub_tmp_speed5[0:N], sub_tmp_speed6[0:N], sub_tmp_speed7[0:N], sub_tmp_speed8[0:N])
+  #pragma omp target exit data map(from: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N])
 
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
@@ -462,7 +463,7 @@ float timestep(const t_param params, float* __restrict__ speed0, float* __restri
   int y_n, x_e, y_s, x_w;
   float local_density, u_x, u_y, u_sq;
   /* loop over _all_ cells */
-  #pragma omp target teams distribute parallel for simd map(tofrom:tot_u) private(tmpSpeed0, tmpSpeed1, tmpSpeed2, tmpSpeed3, tmpSpeed4, tmpSpeed5, tmpSpeed6, tmpSpeed7, tmpSpeed8, y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq) reduction(+:tot_u)
+  #pragma omp target teams distribute parallel for map(tofrom:tot_u) reduction(+:tot_u) collapse(2)
   for (int jj = 1; jj < params.ny + 1; jj++) {
     for (int ii = 0; ii < params.nx; ii++) {
       /* determine indices of axis-direction neighbours
@@ -603,7 +604,7 @@ int accelerate_flow(const t_param params, float* speed0, float* speed1, float* s
   /* modify the 2nd row of the grid */
   int jj = params.ny - 1;
 
-  #pragma omp target teams distribute parallel for simd
+  #pragma omp target teams distribute parallel for 
   for (int ii = 0; ii < params.nx; ii++)
   {
     /* if the cell is not occupied and
