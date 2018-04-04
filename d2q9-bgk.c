@@ -240,6 +240,9 @@ int main(int argc, char* argv[]) {
   float* sub_tmp_speed7 = (float *) malloc(sizeof(float) * N);
   float* sub_tmp_speed8 = (float *) malloc(sizeof(float) * N);
 
+  #pragma omp target enter data map(alloc: sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_tmp_speed0[0:N], sub_tmp_speed1[0:N], sub_tmp_speed2[0:N], sub_tmp_speed3[0:N], sub_tmp_speed4[0:N], sub_tmp_speed5[0:N], sub_tmp_speed6[0:N], sub_tmp_speed7[0:N], sub_tmp_speed8[0:N], sub_obstacles[0:N])
+  {}
+
   MPI_Scatterv(obstacles, send_cnts, displs, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Scatterv(speed0, send_cnts, displs, MPI_FLOAT, (sub_speed0 + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Scatterv(speed1, send_cnts, displs, MPI_FLOAT, (sub_speed1 + sub_params.nx), send_cnts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
@@ -285,6 +288,9 @@ int main(int argc, char* argv[]) {
   float* swp_speed8;
   float local_tot_vel, global_tot_vel;
 
+  #pragma omp target update to(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_obstacles[0:N])
+  {}
+
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
     tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -292,7 +298,6 @@ int main(int argc, char* argv[]) {
 
 
   /* iterate for maxIters timesteps */
-  #pragma omp target enter data map(to: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N])
   for (int tt = 0; tt < params.maxIters; tt++)
   {
     if ((worldSize - 1) == rank) {
@@ -411,7 +416,6 @@ int main(int argc, char* argv[]) {
   }
 #endif
   }
-  #pragma omp target exit data map(from: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N])
 
   if (rank == 0) {
     gettimeofday(&timstr, NULL);
@@ -422,6 +426,9 @@ int main(int argc, char* argv[]) {
     timstr = ru.ru_stime;
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
+
+  #pragma omp target update from(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N])
+  {}
 
   MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, obstacles, send_cnts, displs, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -434,6 +441,9 @@ int main(int argc, char* argv[]) {
   MPI_Gatherv((sub_speed6 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed6, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Gatherv((sub_speed7 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed7, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Gatherv((sub_speed8 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed8, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+  #pragma omp target exit data map(release: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N], sub_obstacles[:N])
+  {}
 
   MPI_Finalize();
 
@@ -463,7 +473,7 @@ float timestep(const t_param params, float* __restrict__ speed0, float* __restri
   int y_n, x_e, y_s, x_w;
   float local_density, u_x, u_y, u_sq;
   /* loop over _all_ cells */
-  #pragma omp target teams distribute parallel for map(tofrom:tot_u) reduction(+:tot_u) collapse(2)
+  #pragma omp target teams distribute parallel for simd map(tofrom:tot_u) reduction(+:tot_u) collapse(2)
   for (int jj = 1; jj < params.ny + 1; jj++) {
     for (int ii = 0; ii < params.nx; ii++) {
       /* determine indices of axis-direction neighbours
@@ -604,7 +614,7 @@ int accelerate_flow(const t_param params, float* speed0, float* speed1, float* s
   /* modify the 2nd row of the grid */
   int jj = params.ny - 1;
 
-  #pragma omp target teams distribute parallel for 
+  #pragma omp target teams distribute parallel for simd
   for (int ii = 0; ii < params.nx; ii++)
   {
     /* if the cell is not occupied and
