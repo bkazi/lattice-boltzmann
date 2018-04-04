@@ -375,6 +375,8 @@ int main(int argc, char* argv[]) {
       memcpy(sub_speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
     }
 
+    #pragma omp target update to(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N])
+    {}
     local_tot_vel = timestep(sub_params, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_obstacles);
     swp_speed0 = sub_speed0;
     sub_speed0 = sub_tmp_speed0;
@@ -403,6 +405,8 @@ int main(int argc, char* argv[]) {
     swp_speed8 = sub_speed8;
     sub_speed8 = sub_tmp_speed8;
     sub_tmp_speed8 = swp_speed8;
+    #pragma omp target update from(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N])
+    {}
 
     MPI_Reduce(&local_tot_vel, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
@@ -427,8 +431,6 @@ int main(int argc, char* argv[]) {
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  #pragma omp target update from(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N])
-  {}
 
   MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, obstacles, send_cnts, displs, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -473,7 +475,7 @@ float timestep(const t_param params, float* __restrict__ speed0, float* __restri
   int y_n, x_e, y_s, x_w;
   float local_density, u_x, u_y, u_sq;
   /* loop over _all_ cells */
-  #pragma omp target teams distribute parallel for simd map(tofrom:tot_u) reduction(+:tot_u) collapse(2)
+  #pragma omp target teams distribute parallel for simd map(tofrom:tot_u) reduction(+:tot_u) collapse(2) schedule(static, 1)
   for (int jj = 1; jj < params.ny + 1; jj++) {
     for (int ii = 0; ii < params.nx; ii++) {
       /* determine indices of axis-direction neighbours
@@ -614,7 +616,7 @@ int accelerate_flow(const t_param params, float* speed0, float* speed1, float* s
   /* modify the 2nd row of the grid */
   int jj = params.ny - 1;
 
-  #pragma omp target teams distribute parallel for simd
+  #pragma omp simd
   for (int ii = 0; ii < params.nx; ii++)
   {
     /* if the cell is not occupied and
