@@ -314,7 +314,7 @@ int main(int argc, char* argv[]) {
   }
 
   /* iterate for maxIters timesteps */
-  for (int tt = 0; tt < maxIters; tt++)
+  for (int tt = 0; tt < maxIters; tt+=2)
   {
     swp_speed0 = (tt % 2) ? sub_tmp_speed0 : sub_speed0;
     swp_tmp_speed0 = (tt % 2) ? sub_speed0 : sub_tmp_speed0;
@@ -380,6 +380,95 @@ int main(int argc, char* argv[]) {
     MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
       av_vels[tt] = global_tot_vel / (float) tot_cells;
+    }
+
+    // =========================
+
+    if ((worldSize - 1) == rank) {
+      accelerate_flow(parameters, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_obstacles);
+    }
+
+    #pragma omp target update from(sub_tmp_speed4[0:rowCnt], sub_tmp_speed7[0:rowCnt], sub_tmp_speed8[0:rowCnt])
+    #pragma omp target update from(sub_tmp_speed2[haloOffset:rowCnt], sub_tmp_speed5[haloOffset:rowCnt], sub_tmp_speed6[haloOffset:rowCnt])
+    // memcpy(sendbuf0, sub_tmp_speed0 + sub_params.nx, sizeof(float) * sub_params.nx);
+    // memcpy(sendbuf0 + sub_params.nx, sub_tmp_speed0 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    // memcpy(sendbuf1, sub_tmp_speed1 + sub_params.nx, sizeof(float) * sub_params.nx);
+    // memcpy(sendbuf1 + sub_params.nx, sub_tmp_speed1 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf2, sub_tmp_speed2 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf2 + sub_params.nx, sub_tmp_speed2 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    // memcpy(sendbuf3, sub_tmp_speed3 + sub_params.nx, sizeof(float) * sub_params.nx);
+    // memcpy(sendbuf3 + sub_params.nx, sub_tmp_speed3 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf4, sub_tmp_speed4 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf4 + sub_params.nx, sub_tmp_speed4 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf5, sub_tmp_speed5 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf5 + sub_params.nx, sub_tmp_speed5 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf6, sub_tmp_speed6 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf6 + sub_params.nx, sub_tmp_speed6 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf7, sub_tmp_speed7 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf7 + sub_params.nx, sub_tmp_speed7 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+    memcpy(sendbuf8, sub_tmp_speed8 + sub_params.nx, sizeof(float) * sub_params.nx);
+    memcpy(sendbuf8 + sub_params.nx, sub_tmp_speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
+
+    // MPI_Ineighbor_alltoall(sendbuf0, sub_params.nx, MPI_FLOAT, recvbuf0, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
+    // MPI_Ineighbor_alltoall(sendbuf1, sub_params.nx, MPI_FLOAT, recvbuf1, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
+    MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
+    // MPI_Ineighbor_alltoall(sendbuf3, sub_params.nx, MPI_FLOAT, recvbuf3, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
+    MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
+    MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[2]);
+    MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
+    MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[4]);
+    MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[5]);
+
+    MPI_Waitall(6, haloRequests, haloStatuses);
+
+    if (worldSize != 2) {
+      // memcpy(sub_tmp_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed0, recvbuf0, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed1, recvbuf1, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed2, recvbuf2, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed3, recvbuf3, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed4, recvbuf4, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed5, recvbuf5, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed6, recvbuf6, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed7, recvbuf7, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed8, recvbuf8, sizeof(float) * sub_params.nx);
+    } else {
+      // memcpy(sub_tmp_speed0 + ((sub_params.ny + 1) * sub_params.nx), recvbuf0, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed0, recvbuf0 + sub_params.nx, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed1 + ((sub_params.ny + 1) * sub_params.nx), recvbuf1, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed1, recvbuf1 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed2 + ((sub_params.ny + 1) * sub_params.nx), recvbuf2, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed2, recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed3 + ((sub_params.ny + 1) * sub_params.nx), recvbuf3, sizeof(float) * sub_params.nx);
+      // memcpy(sub_tmp_speed3, recvbuf3 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed4, recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed5 + ((sub_params.ny + 1) * sub_params.nx), recvbuf5, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed5, recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed6 + ((sub_params.ny + 1) * sub_params.nx), recvbuf6, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed6, recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed7, recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8, sizeof(float) * sub_params.nx);
+      memcpy(sub_tmp_speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
+    }
+
+    reduction_buffer[0] = 0.f;
+    #pragma omp target update to(sub_tmp_speed2[0:rowCnt], sub_tmp_speed5[0:rowCnt], sub_tmp_speed6[0:rowCnt])
+    #pragma omp target update to(sub_tmp_speed4[haloOffset:rowCnt], sub_tmp_speed7[haloOffset:rowCnt], sub_tmp_speed8[haloOffset:rowCnt])
+    timestep(parameters, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_obstacles, reduction_buffer);
+
+    MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
+    if (rank == 0) {
+      av_vels[tt + 1] = global_tot_vel / (float) tot_cells;
     }
 #ifdef DEBUG
   if (rank == 0) {
@@ -614,25 +703,25 @@ int timestepOuter(const t_param params, float* __restrict__ speed0, float* __res
       jj = c == 0 ? 1 : ny;
       /* determine indices of axis-direction neighbours
       ** respecting periodic boundary conditions (wrap around) */
-      y_n = jj + 1;
-      x_e = (ii + 1) % nx;
-      y_s = jj - 1;
-      x_w = (ii == 0) ? (ii + nx - 1) : (ii - 1);
+      int y_n = jj + 1;
+      int x_e = (ii + 1) % nx;
+      int y_s = jj - 1;
+      int x_w = (ii == 0) ? (ii + nx - 1) : (ii - 1);
       /* propagate densities from neighbouring cells, following
       ** appropriate directions of travel and writing into
       ** scratch space grid */
-      tmpSpeed0 = speed0[ii + jj*nx]; /* central cell, no movement */
-      tmpSpeed1 = speed1[x_w + jj*nx]; /* east */
-      tmpSpeed2 = speed2[ii + y_s*nx]; /* north */
-      tmpSpeed3 = speed3[x_e + jj*nx]; /* west */
-      tmpSpeed4 = speed4[ii + y_n*nx]; /* south */
-      tmpSpeed5 = speed5[x_w + y_s*nx]; /* north-east */
-      tmpSpeed6 = speed6[x_e + y_s*nx]; /* north-west */
-      tmpSpeed7 = speed7[x_e + y_n*nx]; /* south-west */
-      tmpSpeed8 = speed8[x_w + y_n*nx]; /* south-east */
+      float tmpSpeed0 = speed0[ii + jj*nx]; /* central cell, no movement */
+      float tmpSpeed1 = speed1[x_w + jj*nx]; /* east */
+      float tmpSpeed2 = speed2[ii + y_s*nx]; /* north */
+      float tmpSpeed3 = speed3[x_e + jj*nx]; /* west */
+      float tmpSpeed4 = speed4[ii + y_n*nx]; /* south */
+      float tmpSpeed5 = speed5[x_w + y_s*nx]; /* north-east */
+      float tmpSpeed6 = speed6[x_e + y_s*nx]; /* north-west */
+      float tmpSpeed7 = speed7[x_e + y_n*nx]; /* south-west */
+      float tmpSpeed8 = speed8[x_w + y_n*nx]; /* south-east */
 
       /* compute local density total */
-      local_density = 0.f;
+      float local_density = 0.f;
 
       local_density += tmpSpeed0;
       local_density += tmpSpeed1;
@@ -645,7 +734,7 @@ int timestepOuter(const t_param params, float* __restrict__ speed0, float* __res
       local_density += tmpSpeed8;
 
       /* compute x velocity component */
-      u_x = (tmpSpeed1
+      float u_x = (tmpSpeed1
                     + tmpSpeed5
                     + tmpSpeed8
                     - (tmpSpeed3
@@ -653,7 +742,7 @@ int timestepOuter(const t_param params, float* __restrict__ speed0, float* __res
                         + tmpSpeed7))
                     / local_density;
       /* compute y velocity component */
-      u_y = (tmpSpeed2
+      float u_y = (tmpSpeed2
                     + tmpSpeed5
                     + tmpSpeed6
                     - (tmpSpeed4
@@ -754,6 +843,7 @@ int accelerate_flow(const float* params, float* speed0, float* speed1, float* sp
   #pragma omp target teams distribute parallel for shared(w1, w2, nx, jj)
   for (int ii = 0; ii < nx; ii++)
   {
+    int nx = params[0];
     /* if the cell is not occupied and
     ** we don't send a negative density */
     if (!obstacles[ii + jj*nx]
