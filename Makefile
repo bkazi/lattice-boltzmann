@@ -2,8 +2,8 @@
 
 EXE=d2q9-bgk
 
-CC=mpicc
-CFLAGS= -std=c99 -Wall -O3 -axAVX -xHOST -fopenmp
+CC=mpiicc
+CFLAGS= -std=c99 -Wall -O3 -Ofast -axAVX -xHOST -fopenmp
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
