@@ -406,7 +406,7 @@ int main(int argc, char* argv[]) {
 
     MPI_Waitall(6, haloRequests, haloStatuses);
 
-    if (worldSize != 2) {
+    if (worldSize > 2) {
       memcpy(sub_tmp_speed2, recvbuf2, sizeof(float) * sub_params.nx);
       memcpy(sub_tmp_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
       memcpy(sub_tmp_speed5, recvbuf5, sizeof(float) * sub_params.nx);
@@ -423,12 +423,12 @@ int main(int argc, char* argv[]) {
     }
 
     reduction_buffer[0] = 0.f;
-    // #pragma omp target update to(reduction_buffer[0:1])
+    #pragma omp target update to(reduction_buffer[0:1])
     #pragma omp target update to(sub_tmp_speed2[0:rowCnt], sub_tmp_speed5[0:rowCnt], sub_tmp_speed6[0:rowCnt])
     #pragma omp target update to(sub_tmp_speed4[haloOffset:rowCnt], sub_tmp_speed7[haloOffset:rowCnt], sub_tmp_speed8[haloOffset:rowCnt])
     timestep(parameters, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_obstacles, reduction_buffer);
 
-    // #pragma omp target update from(reduction_buffer[0:1])
+    #pragma omp target update from(reduction_buffer[0:1])
     MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
       av_vels[tt + 1] = global_tot_vel / (float) tot_cells;
