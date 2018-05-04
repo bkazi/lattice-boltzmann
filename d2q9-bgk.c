@@ -314,7 +314,7 @@ int main(int argc, char* argv[]) {
   }
 
   /* iterate for maxIters timesteps */
-  for (int tt = 0; tt < maxIters; tt+=2)
+  for (int tt = 0; tt < maxIters; tt++)
   {
     swp_speed0 = (tt % 2) ? sub_tmp_speed0 : sub_speed0;
     swp_tmp_speed0 = (tt % 2) ? sub_speed0 : sub_tmp_speed0;
@@ -380,58 +380,6 @@ int main(int argc, char* argv[]) {
     MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
     if (rank == 0) {
       av_vels[tt] = global_tot_vel / (float) tot_cells;
-    }
-
-    // =========================
-
-    if ((worldSize - 1) == rank) {
-      accelerate_flow(parameters, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_obstacles);
-    }
-
-    #pragma omp target update from(sub_tmp_speed2[rowCnt:rowCnt], sub_tmp_speed5[rowCnt:rowCnt], sub_tmp_speed6[rowCnt:rowCnt])
-    #pragma omp target update from(sub_tmp_speed4[haloOffset-rowCnt:rowCnt], sub_tmp_speed7[haloOffset-rowCnt:rowCnt], sub_tmp_speed8[haloOffset-rowCnt:rowCnt])
-    memcpy(sendbuf2, sub_tmp_speed2 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf4 + sub_params.nx, sub_tmp_speed4 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf5, sub_tmp_speed5 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf6, sub_tmp_speed6 + sub_params.nx, sizeof(float) * sub_params.nx);
-    memcpy(sendbuf7 + sub_params.nx, sub_tmp_speed7 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-    memcpy(sendbuf8 + sub_params.nx, sub_tmp_speed8 + (sub_params.ny * sub_params.nx), sizeof(float) * sub_params.nx);
-
-    MPI_Ineighbor_alltoall(sendbuf2, sub_params.nx, MPI_FLOAT, recvbuf2, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[0]);
-    MPI_Ineighbor_alltoall(sendbuf4, sub_params.nx, MPI_FLOAT, recvbuf4, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[1]);
-    MPI_Ineighbor_alltoall(sendbuf5, sub_params.nx, MPI_FLOAT, recvbuf5, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[2]);
-    MPI_Ineighbor_alltoall(sendbuf6, sub_params.nx, MPI_FLOAT, recvbuf6, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[3]);
-    MPI_Ineighbor_alltoall(sendbuf7, sub_params.nx, MPI_FLOAT, recvbuf7, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[4]);
-    MPI_Ineighbor_alltoall(sendbuf8, sub_params.nx, MPI_FLOAT, recvbuf8, sub_params.nx, MPI_FLOAT, cart_world, &haloRequests[5]);
-
-    MPI_Waitall(6, haloRequests, haloStatuses);
-
-    if (worldSize > 2) {
-      memcpy(sub_tmp_speed2, recvbuf2, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed5, recvbuf5, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed6, recvbuf6, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
-    } else {
-      memcpy(sub_tmp_speed2, recvbuf2 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed4 + ((sub_params.ny + 1) * sub_params.nx), recvbuf4, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed5, recvbuf5 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed6, recvbuf6 + sub_params.nx, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed7 + ((sub_params.ny + 1) * sub_params.nx), recvbuf7, sizeof(float) * sub_params.nx);
-      memcpy(sub_tmp_speed8, recvbuf8 + sub_params.nx, sizeof(float) * sub_params.nx);
-    }
-
-    reduction_buffer[0] = 0.f;
-    #pragma omp target update to(reduction_buffer[0:1])
-    #pragma omp target update to(sub_tmp_speed2[0:rowCnt], sub_tmp_speed5[0:rowCnt], sub_tmp_speed6[0:rowCnt])
-    #pragma omp target update to(sub_tmp_speed4[haloOffset:rowCnt], sub_tmp_speed7[haloOffset:rowCnt], sub_tmp_speed8[haloOffset:rowCnt])
-    timestep(parameters, sub_tmp_speed0, sub_tmp_speed1, sub_tmp_speed2, sub_tmp_speed3, sub_tmp_speed4, sub_tmp_speed5, sub_tmp_speed6, sub_tmp_speed7, sub_tmp_speed8, sub_speed0, sub_speed1, sub_speed2, sub_speed3, sub_speed4, sub_speed5, sub_speed6, sub_speed7, sub_speed8, sub_obstacles, reduction_buffer);
-
-    #pragma omp target update from(reduction_buffer[0:1])
-    MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
-    if (rank == 0) {
-      av_vels[tt + 1] = global_tot_vel / (float) tot_cells;
     }
 #ifdef DEBUG
   if (rank == 0) {

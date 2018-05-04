@@ -4,7 +4,7 @@
 #SBATCH --nodes 2
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres=gpu:2
-#SBATCH --time 00:000:30
+#SBATCH --time 00:00:30
 #SBATCH --partition gpu_veryshort
 #SBATCH --output d2q9-bgk.out
 
