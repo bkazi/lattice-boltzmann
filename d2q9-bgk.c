@@ -471,111 +471,123 @@ int timestepInner(const t_param params, float* __restrict__ speed0, float* __res
       tmpSpeed7 = speed7[x_e + y_n*nx]; /* south-west */
       tmpSpeed8 = speed8[x_w + y_n*nx]; /* south-east */
 
-      /* compute local density total */
-      local_density = 0.f;
+      if (!obstacles[ii + jj*nx]) {
+        /* compute local density total */
+        local_density = 0.f;
 
-      local_density += tmpSpeed0;
-      local_density += tmpSpeed1;
-      local_density += tmpSpeed2;
-      local_density += tmpSpeed3;
-      local_density += tmpSpeed4;
-      local_density += tmpSpeed5;
-      local_density += tmpSpeed6;
-      local_density += tmpSpeed7;
-      local_density += tmpSpeed8;
+        local_density += tmpSpeed0;
+        local_density += tmpSpeed1;
+        local_density += tmpSpeed2;
+        local_density += tmpSpeed3;
+        local_density += tmpSpeed4;
+        local_density += tmpSpeed5;
+        local_density += tmpSpeed6;
+        local_density += tmpSpeed7;
+        local_density += tmpSpeed8;
 
-      /* compute x velocity component */
-      u_x = (tmpSpeed1
-                    + tmpSpeed5
-                    + tmpSpeed8
-                    - (tmpSpeed3
-                        + tmpSpeed6
-                        + tmpSpeed7))
-                    / local_density;
-      /* compute y velocity component */
-      u_y = (tmpSpeed2
-                    + tmpSpeed5
-                    + tmpSpeed6
-                    - (tmpSpeed4
-                        + tmpSpeed7
-                        + tmpSpeed8))
-                    / local_density;
+        /* compute x velocity component */
+        u_x = (tmpSpeed1
+                      + tmpSpeed5
+                      + tmpSpeed8
+                      - (tmpSpeed3
+                          + tmpSpeed6
+                          + tmpSpeed7))
+                      / local_density;
+        /* compute y velocity component */
+        u_y = (tmpSpeed2
+                      + tmpSpeed5
+                      + tmpSpeed6
+                      - (tmpSpeed4
+                          + tmpSpeed7
+                          + tmpSpeed8))
+                      / local_density;
 
-      /* velocity squared */
-      u_sq = u_x * u_x + u_y * u_y;
-      reduction_buffer[0] += !obstacles[ii + jj*nx] ? sqrtf(u_sq) : 0;
+        /* velocity squared */
+        u_sq = u_x * u_x + u_y * u_y;
+        reduction_buffer[0] += !obstacles[ii + jj*nx] ? sqrtf(u_sq) : 0;
 
-      /* directional velocity components */
-      float u[NSPEEDS];
-      u[1] =   u_x;        /* east */
-      u[2] =         u_y;  /* north */
-      u[3] = - u_x;        /* west */
-      u[4] =       - u_y;  /* south */
-      u[5] =   u_x + u_y;  /* north-east */
-      u[6] = - u_x + u_y;  /* north-west */
-      u[7] = - u_x - u_y;  /* south-west */
-      u[8] =   u_x - u_y;  /* south-east */
+        /* directional velocity components */
+        float u[NSPEEDS];
+        u[1] =   u_x;        /* east */
+        u[2] =         u_y;  /* north */
+        u[3] = - u_x;        /* west */
+        u[4] =       - u_y;  /* south */
+        u[5] =   u_x + u_y;  /* north-east */
+        u[6] = - u_x + u_y;  /* north-west */
+        u[7] = - u_x - u_y;  /* south-west */
+        u[8] =   u_x - u_y;  /* south-east */
 
-      /* equilibrium densities */
-      float d_equ[NSPEEDS];
-      /* zero velocity density: weight w0 */
-      d_equ[0] = w0 * local_density
-                  * (1.f - u_sq / (2.f * c_sq));
-      /* axis speeds: weight w1 */
-      d_equ[1] = w1 * local_density * (1.f + u[1] / c_sq
-                                        + (u[1] * u[1]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[2] = w1 * local_density * (1.f + u[2] / c_sq
-                                        + (u[2] * u[2]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[3] = w1 * local_density * (1.f + u[3] / c_sq
-                                        + (u[3] * u[3]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[4] = w1 * local_density * (1.f + u[4] / c_sq
-                                        + (u[4] * u[4]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      /* diagonal speeds: weight w2 */
-      d_equ[5] = w2 * local_density * (1.f + u[5] / c_sq
-                                        + (u[5] * u[5]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[6] = w2 * local_density * (1.f + u[6] / c_sq
-                                        + (u[6] * u[6]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[7] = w2 * local_density * (1.f + u[7] / c_sq
-                                        + (u[7] * u[7]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
-      d_equ[8] = w2 * local_density * (1.f + u[8] / c_sq
-                                        + (u[8] * u[8]) / (2.f * c_sq * c_sq)
-                                        - u_sq / (2.f * c_sq));
+        /* equilibrium densities */
+        float d_equ[NSPEEDS];
+        /* zero velocity density: weight w0 */
+        d_equ[0] = w0 * local_density
+                    * (1.f - u_sq / (2.f * c_sq));
+        /* axis speeds: weight w1 */
+        d_equ[1] = w1 * local_density * (1.f + u[1] / c_sq
+                                          + (u[1] * u[1]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[2] = w1 * local_density * (1.f + u[2] / c_sq
+                                          + (u[2] * u[2]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[3] = w1 * local_density * (1.f + u[3] / c_sq
+                                          + (u[3] * u[3]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[4] = w1 * local_density * (1.f + u[4] / c_sq
+                                          + (u[4] * u[4]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        /* diagonal speeds: weight w2 */
+        d_equ[5] = w2 * local_density * (1.f + u[5] / c_sq
+                                          + (u[5] * u[5]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[6] = w2 * local_density * (1.f + u[6] / c_sq
+                                          + (u[6] * u[6]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[7] = w2 * local_density * (1.f + u[7] / c_sq
+                                          + (u[7] * u[7]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
+        d_equ[8] = w2 * local_density * (1.f + u[8] / c_sq
+                                          + (u[8] * u[8]) / (2.f * c_sq * c_sq)
+                                          - u_sq / (2.f * c_sq));
 
-      /* relaxation step */
-      tmp_speed0[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed0
-                                              + omega
-                                              * (d_equ[0] - tmpSpeed0) : tmpSpeed0;
-      tmp_speed1[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed1
-                                              + omega
-                                              * (d_equ[1] - tmpSpeed1) : tmpSpeed3;
-      tmp_speed2[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed2
-                                              + omega
-                                              * (d_equ[2] - tmpSpeed2) : tmpSpeed4;
-      tmp_speed3[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed3
-                                              + omega
-                                              * (d_equ[3] - tmpSpeed3) : tmpSpeed1;
-      tmp_speed4[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed4
-                                              + omega
-                                              * (d_equ[4] - tmpSpeed4) : tmpSpeed2;
-      tmp_speed5[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed5
-                                              + omega
-                                              * (d_equ[5] - tmpSpeed5) : tmpSpeed7;
-      tmp_speed6[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed6
-                                              + omega
-                                              * (d_equ[6] - tmpSpeed6) : tmpSpeed8;
-      tmp_speed7[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed7
-                                              + omega
-                                              * (d_equ[7] - tmpSpeed7) : tmpSpeed5;
-      tmp_speed8[ii + jj*nx] = !obstacles[ii + jj*nx] ? tmpSpeed8
-                                              + omega
-                                              * (d_equ[8] - tmpSpeed8) : tmpSpeed6;
+        /* relaxation step */
+        tmp_speed0[ii + jj*nx] = tmpSpeed0
+                                + omega
+                                * (d_equ[0] - tmpSpeed0);
+        tmp_speed1[ii + jj*nx] = tmpSpeed1
+                                + omega
+                                * (d_equ[1] - tmpSpeed1);
+        tmp_speed2[ii + jj*nx] = tmpSpeed2
+                                + omega
+                                * (d_equ[2] - tmpSpeed2);
+        tmp_speed3[ii + jj*nx] = tmpSpeed3
+                                + omega
+                                * (d_equ[3] - tmpSpeed3);
+        tmp_speed4[ii + jj*nx] = tmpSpeed4
+                                + omega
+                                * (d_equ[4] - tmpSpeed4);
+        tmp_speed5[ii + jj*nx] = tmpSpeed5
+                                + omega
+                                * (d_equ[5] - tmpSpeed5);
+        tmp_speed6[ii + jj*nx] = tmpSpeed6
+                                + omega
+                                * (d_equ[6] - tmpSpeed6);
+        tmp_speed7[ii + jj*nx] = tmpSpeed7
+                                + omega
+                                * (d_equ[7] - tmpSpeed7);
+        tmp_speed8[ii + jj*nx] = tmpSpeed8
+                                + omega
+                                * (d_equ[8] - tmpSpeed8);
+      } else {
+        tmp_speed0[ii + jj*nx] = tmpSpeed0;
+        tmp_speed1[ii + jj*nx] = tmpSpeed3;
+        tmp_speed2[ii + jj*nx] = tmpSpeed4;
+        tmp_speed3[ii + jj*nx] = tmpSpeed1;
+        tmp_speed4[ii + jj*nx] = tmpSpeed2;
+        tmp_speed5[ii + jj*nx] = tmpSpeed7;
+        tmp_speed6[ii + jj*nx] = tmpSpeed8;
+        tmp_speed7[ii + jj*nx] = tmpSpeed5;
+        tmp_speed8[ii + jj*nx] = tmpSpeed6;
+      }
     }
   }
   return EXIT_SUCCESS;
