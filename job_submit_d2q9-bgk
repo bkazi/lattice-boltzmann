@@ -3,8 +3,7 @@
 #SBATCH --job-name d2q9-bgk
 #SBATCH --nodes 4
 #SBATCH --ntasks-per-node 28
-#SBATCH --cpus-per-task 1
-#SBATCH --time 00:01:00
+#SBATCH --time 00:00:10
 #SBATCH --partition cpu
 #SBATCH --output d2q9-bgk.out
 
@@ -16,4 +15,4 @@ echo This job runs on the following machines:
 echo `echo $SLURM_JOB_NODELIST | uniq`
 
 #! Run the executable
-mpirun ./d2q9-bgk input_128x128.params obstacles_128x128.dat
+mpirun ./d2q9-bgk input_1024x1024.params obstacles_1024x1024.dat
