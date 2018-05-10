@@ -86,7 +86,7 @@ int initialise(const char* paramfile, const char* obstaclefile, t_param* params,
 /*
 ** The main calculation methods.
 */
-int timestepInner(const float* parameters, float* speed0, float* speed1, float* speed2, float* speed3, float* speed4, float* speed5, float* speed6, float* speed7, float* speed8, float* tmp_speed0, float* tmp_speed1, float* tmp_speed2, float* tmp_speed3, float* tmp_speed4, float* tmp_speed5, float* tmp_speed6, float* tmp_speed7, float* tmp_speed8, int* obstacles, float *reduction_buffer);
+int timestepInner(const float* parameters, float* speed0, float* speed1, float* speed2, float* speed3, float* speed4, float* speed5, float* speed6, float* speed7, float* speed8, float* tmp_speed0, float* tmp_speed1, float* tmp_speed2, float* tmp_speed3, float* tmp_speed4, float* tmp_speed5, float* tmp_speed6, float* tmp_speed7, float* tmp_speed8, int* obstacles, float *reduction_buffer, int tt);
 int timestepOuter(const t_param parameters, float* speed0, float* speed1, float* speed2, float* speed3, float* speed4, float* speed5, float* speed6, float* speed7, float* speed8, float* tmp_speed0, float* tmp_speed1, float* tmp_speed2, float* tmp_speed3, float* tmp_speed4, float* tmp_speed5, float* tmp_speed6, float* tmp_speed7, float* tmp_speed8, int* obstacles, float *reduction_buffer);
 int accelerate_flow(const float* parameters, float* speed0, float* speed1, float* speed2, float* speed3, float* speed4, float* speed5, float* speed6, float* speed7, float* speed8, int* obstacles);
 int write_values(const t_param params, float* speed0, float* speed1, float* speed2, float* speed3, float* speed4, float* speed5, float* speed6, float* speed7, float* speed8, int* obstacles, float* av_vels);
@@ -243,7 +243,7 @@ int main(int argc, char* argv[]) {
   float* sub_tmp_speed7 = (float *) malloc(sizeof(float) * N);
   float* sub_tmp_speed8 = (float *) malloc(sizeof(float) * N);
 
-  float* reduction_buffer = malloc(sizeof(float));
+  float* reduction_buffer = malloc(sub_params.maxIters * sizeof(float));
   float parameters[] = {
     sub_params.nx,
     sub_params.ny,
@@ -254,7 +254,7 @@ int main(int argc, char* argv[]) {
 
   int maxIters = params.maxIters;
 
-  #pragma omp target enter data map(alloc: sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_tmp_speed0[0:N], sub_tmp_speed1[0:N], sub_tmp_speed2[0:N], sub_tmp_speed3[0:N], sub_tmp_speed4[0:N], sub_tmp_speed5[0:N], sub_tmp_speed6[0:N], sub_tmp_speed7[0:N], sub_tmp_speed8[0:N], sub_obstacles[0:N], reduction_buffer[0:1], parameters[0:5])
+  #pragma omp target enter data map(alloc: sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_tmp_speed0[0:N], sub_tmp_speed1[0:N], sub_tmp_speed2[0:N], sub_tmp_speed3[0:N], sub_tmp_speed4[0:N], sub_tmp_speed5[0:N], sub_tmp_speed6[0:N], sub_tmp_speed7[0:N], sub_tmp_speed8[0:N], sub_obstacles[0:N], reduction_buffer[0:maxIters], parameters[0:5])
   {}
 
   MPI_Scatterv(obstacles, send_cnts, displs, MPI_INT, (sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, 0, MPI_COMM_WORLD);
@@ -303,9 +303,10 @@ int main(int argc, char* argv[]) {
   float* swp_tmp_speed6;
   float* swp_tmp_speed7;
   float* swp_tmp_speed8;
-  float global_tot_vel;
 
-  #pragma omp target update to(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_obstacles[0:N], parameters[0:5])
+  memset(reduction_buffer, 0, maxIters * sizeof(float));
+
+  #pragma omp target update to(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], sub_obstacles[0:N], parameters[0:5], reduction_buffer[0:maxIters])
   {}
 
   if (rank == 0) {
@@ -372,15 +373,8 @@ int main(int argc, char* argv[]) {
       memcpy(swp_speed8 + ((sub_params.ny + 1) * sub_params.nx), recvbuf8, sizeof(float) * sub_params.nx);
     }
 
-    reduction_buffer[0] = 0.f;
-    #pragma omp target update to(reduction_buffer[0:1], swp_speed2[0:rowCnt], swp_speed5[0:rowCnt], swp_speed6[0:rowCnt], swp_speed4[haloOffset:rowCnt], swp_speed7[haloOffset:rowCnt], swp_speed8[haloOffset:rowCnt])
-    timestepInner(parameters, swp_speed0, swp_speed1, swp_speed2, swp_speed3, swp_speed4, swp_speed5, swp_speed6, swp_speed7, swp_speed8, swp_tmp_speed0, swp_tmp_speed1, swp_tmp_speed2, swp_tmp_speed3, swp_tmp_speed4, swp_tmp_speed5, swp_tmp_speed6, swp_tmp_speed7, swp_tmp_speed8, sub_obstacles, reduction_buffer);
-
-    #pragma omp target update from(reduction_buffer[0:1])
-    MPI_Reduce(reduction_buffer, &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
-    if (rank == 0) {
-      av_vels[tt] = global_tot_vel / (float) tot_cells;
-    }
+    #pragma omp target update to(swp_speed2[0:rowCnt], swp_speed5[0:rowCnt], swp_speed6[0:rowCnt], swp_speed4[haloOffset:rowCnt], swp_speed7[haloOffset:rowCnt], swp_speed8[haloOffset:rowCnt])
+    timestepInner(parameters, swp_speed0, swp_speed1, swp_speed2, swp_speed3, swp_speed4, swp_speed5, swp_speed6, swp_speed7, swp_speed8, swp_tmp_speed0, swp_tmp_speed1, swp_tmp_speed2, swp_tmp_speed3, swp_tmp_speed4, swp_tmp_speed5, swp_tmp_speed6, swp_tmp_speed7, swp_tmp_speed8, sub_obstacles, reduction_buffer, tt);
 #ifdef DEBUG
   if (rank == 0) {
     printf("==timestep: %d==\n", tt);
@@ -400,8 +394,16 @@ int main(int argc, char* argv[]) {
     systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   }
 
-  #pragma omp target update from(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N])
+  #pragma omp target update from(sub_speed0[0:N], sub_speed1[0:N], sub_speed2[0:N], sub_speed3[0:N], sub_speed4[0:N], sub_speed5[0:N], sub_speed6[0:N], sub_speed7[0:N], sub_speed8[0:N], reduction_buffer[0:maxIters])
   {}
+
+  for (int tt = 0; tt < maxIters; ++tt) {
+    float global_tot_vel;
+    MPI_Reduce(&reduction_buffer[tt], &global_tot_vel, 1, MPI_FLOAT, MPI_SUM, 0, cart_world);
+    if (rank == 0) {
+      av_vels[tt] = global_tot_vel / (float) tot_cells;
+    }
+  }
 
   MPI_Gatherv((sub_obstacles + sub_params.nx), send_cnts[rank], MPI_INT, obstacles, send_cnts, displs, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -415,7 +417,7 @@ int main(int argc, char* argv[]) {
   MPI_Gatherv((sub_speed7 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed7, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
   MPI_Gatherv((sub_speed8 + sub_params.nx), send_cnts[rank], MPI_FLOAT, speed8, send_cnts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  #pragma omp target exit data map(release: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N], sub_obstacles[:N], reduction_buffer[0:1], parameters[0:5])
+  #pragma omp target exit data map(release: sub_speed0[:N], sub_speed1[:N], sub_speed2[:N], sub_speed3[:N], sub_speed4[:N], sub_speed5[:N], sub_speed6[:N], sub_speed7[:N], sub_speed8[:N], sub_tmp_speed0[:N], sub_tmp_speed1[:N], sub_tmp_speed2[:N], sub_tmp_speed3[:N], sub_tmp_speed4[:N], sub_tmp_speed5[:N], sub_tmp_speed6[:N], sub_tmp_speed7[:N], sub_tmp_speed8[:N], sub_obstacles[:N], reduction_buffer[0:maxIters], parameters[0:5])
   {}
 
   MPI_Finalize();
@@ -434,7 +436,7 @@ int main(int argc, char* argv[]) {
   return EXIT_SUCCESS;
 }
 
-int timestepInner(const float* params, float* __restrict__ speed0, float* __restrict__ speed1, float* __restrict__ speed2, float* __restrict__ speed3, float* __restrict__ speed4, float* __restrict__ speed5, float* __restrict__ speed6, float* __restrict__ speed7, float* __restrict__ speed8, float* __restrict__ tmp_speed0, float* __restrict__ tmp_speed1, float* __restrict__ tmp_speed2, float* __restrict__ tmp_speed3, float* __restrict__ tmp_speed4, float* __restrict__ tmp_speed5, float* __restrict__ tmp_speed6, float* __restrict__ tmp_speed7, float* __restrict__ tmp_speed8, int* __restrict__ obstacles, float* __restrict__ reduction_buffer) {
+int timestepInner(const float* params, float* __restrict__ speed0, float* __restrict__ speed1, float* __restrict__ speed2, float* __restrict__ speed3, float* __restrict__ speed4, float* __restrict__ speed5, float* __restrict__ speed6, float* __restrict__ speed7, float* __restrict__ speed8, float* __restrict__ tmp_speed0, float* __restrict__ tmp_speed1, float* __restrict__ tmp_speed2, float* __restrict__ tmp_speed3, float* __restrict__ tmp_speed4, float* __restrict__ tmp_speed5, float* __restrict__ tmp_speed6, float* __restrict__ tmp_speed7, float* __restrict__ tmp_speed8, int* __restrict__ obstacles, float* __restrict__ reduction_buffer, int tt) {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
   const float w1 = 1.f / 9.f;  /* weighting factor */
@@ -449,7 +451,7 @@ int timestepInner(const float* params, float* __restrict__ speed0, float* __rest
   float omega = params[2];
 
   /* loop over _all_ cells */
-  #pragma omp target teams distribute parallel for reduction(+:reduction_buffer[0]) collapse(2) private(y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq, tmpSpeed0, tmpSpeed1, tmpSpeed2, tmpSpeed3, tmpSpeed4, tmpSpeed5, tmpSpeed6, tmpSpeed7, tmpSpeed8) shared(ny, nx, omega, c_sq, w0, w1, w2, c_2_sq_sq)
+  #pragma omp target teams distribute parallel for reduction(+:reduction_buffer[tt]) collapse(2) private(y_n, x_e, y_s, x_w, local_density, u_x, u_y, u_sq, tmpSpeed0, tmpSpeed1, tmpSpeed2, tmpSpeed3, tmpSpeed4, tmpSpeed5, tmpSpeed6, tmpSpeed7, tmpSpeed8) shared(ny, nx, omega, c_sq, w0, w1, w2, c_2_sq_sq)
   for (int jj = 1; jj < ny + 1; ++jj) {
     for (int ii = 0; ii < nx; ++ii) {
       /* determine indices of axis-direction neighbours
@@ -504,7 +506,7 @@ int timestepInner(const float* params, float* __restrict__ speed0, float* __rest
 
         /* velocity squared */
         u_sq = u_x * u_x + u_y * u_y;
-        reduction_buffer[0] += sqrtf(u_sq);
+        reduction_buffer[tt] += sqrtf(u_sq);
 
         /* directional velocity components */
         float u[NSPEEDS];
