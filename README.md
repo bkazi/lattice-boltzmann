@@ -34,7 +34,7 @@ OpenMP 4.5 pragmas produce CUDA code
 ```
 to transfer data to the GPU and
 ```
-#pragma omp target update to()
+#pragma omp target update from()
 ```
 to transfer data from the GPU.  
 Although these are very expensive operations and must be used sparingly.  
